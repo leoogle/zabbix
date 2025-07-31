@@ -19,6 +19,23 @@ deshabilitar_epel_zabbix() {
     fi
 }
 
+# Función para reemplazar mirrorlist por vault en CentOS 7
+fix_centos7_mirrorlist() {
+    local base_repo="/etc/yum.repos.d/CentOS-Base.repo"
+
+    if [[ "$VERSION_ID_CLEAN" == "7" && -f "$base_repo" ]]; then
+        echo "🔍 Verificando si es necesario reemplazar mirrorlist en CentOS 7..."
+
+        if grep -q "^mirrorlist=" "$base_repo"; then
+            echo "🛠 Reemplazando mirrorlist por vault.centos.org en $base_repo"
+            sed -i.bak -e 's|^mirrorlist=|#mirrorlist=|g' \
+                       -e 's|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=http://vault.centos.org/7.9.2009|g' "$base_repo"
+        else
+            echo "✅ mirrorlist ya fue reemplazado previamente o no es necesario."
+        fi
+    fi
+}
+
 # Detectar distribución
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -46,6 +63,7 @@ install_zabbix_agent_rpm() {
     fi
 
     if [ "$VERSION_ID_CLEAN" -eq 7 ]; then
+        fix_centos7_mirrorlist
         REPO_URL="https://repo.zabbix.com/zabbix/7.4/release/rhel/7/noarch/zabbix-release-latest-7.4.el7.noarch.rpm"
         rpm -Uvh "$REPO_URL"
         yum clean all
