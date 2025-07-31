@@ -65,12 +65,18 @@ install_zabbix_agent_rpm() {
     if [ "$VERSION_ID_CLEAN" -eq 7 ]; then
         fix_centos7_mirrorlist
         REPO_URL="https://repo.zabbix.com/zabbix/7.4/release/rhel/7/noarch/zabbix-release-latest-7.4.el7.noarch.rpm"
-        rpm -Uvh "$REPO_URL"
+    else
+        REPO_URL="https://repo.zabbix.com/zabbix/7.4/release/centos/$VERSION_ID_CLEAN/noarch/zabbix-release-latest-7.4.el${VERSION_ID_CLEAN}.noarch.rpm"
+    fi
+
+    echo "📥 Descargando repo desde $REPO_URL"
+    curl -k -o /tmp/zabbix-release.rpm "$REPO_URL"
+    rpm -Uvh /tmp/zabbix-release.rpm
+
+    if [ "$VERSION_ID_CLEAN" -eq 7 ]; then
         yum clean all
         yum install -y zabbix-agent
     else
-        REPO_URL="https://repo.zabbix.com/zabbix/7.4/release/centos/$VERSION_ID_CLEAN/noarch/zabbix-release-latest-7.4.el${VERSION_ID_CLEAN}.noarch.rpm"
-        rpm -Uvh "$REPO_URL"
         dnf clean all
         dnf install -y zabbix-agent
     fi
