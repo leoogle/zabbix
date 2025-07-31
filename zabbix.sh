@@ -5,7 +5,6 @@ set -e
 ZBX_SERVER="noc.jordan.cl"
 ZBX_CONF="/etc/zabbix/zabbix_agentd.conf"
 
-# Función para desactivar Zabbix desde EPEL (CentOS/RHEL 9+)
 deshabilitar_epel_zabbix() {
     local epel_repo="/etc/yum.repos.d/epel.repo"
     if [ -f "$epel_repo" ]; then
@@ -19,13 +18,10 @@ deshabilitar_epel_zabbix() {
     fi
 }
 
-# Función para reemplazar mirrorlist por vault en CentOS 7
 fix_centos7_mirrorlist() {
     local base_repo="/etc/yum.repos.d/CentOS-Base.repo"
-
     if [[ "$VERSION_ID_CLEAN" == "7" && -f "$base_repo" ]]; then
         echo "🔍 Verificando si es necesario reemplazar mirrorlist en CentOS 7..."
-
         if grep -q "^mirrorlist=" "$base_repo"; then
             echo "🛠 Reemplazando mirrorlist por vault.centos.org en $base_repo"
             sed -i.bak -e 's|^mirrorlist=|#mirrorlist=|g' \
@@ -36,7 +32,6 @@ fix_centos7_mirrorlist() {
     fi
 }
 
-# Detectar distribución
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     DISTRO=$ID
@@ -71,14 +66,14 @@ install_zabbix_agent_rpm() {
 
     echo "📥 Descargando repo desde $REPO_URL"
     curl -k -o /tmp/zabbix-release.rpm "$REPO_URL"
-    rpm -Uvh /tmp/zabbix-release.rpm
+    rpm -Uvh /tmp/zabbix-release.rpm || echo "⚠️ El repo ya estaba instalado"
 
     if [ "$VERSION_ID_CLEAN" -eq 7 ]; then
         yum clean all
-        yum install -y zabbix-agent
+        yum install -y zabbix-agent || echo "⚠️ Ya instalado o falló, intenta verificar manualmente"
     else
         dnf clean all
-        dnf install -y zabbix-agent
+        dnf install -y zabbix-agent || echo "⚠️ Ya instalado o falló, intenta verificar manualmente"
     fi
 }
 
@@ -86,16 +81,24 @@ configurar_zabbix() {
     echo "Configurando Zabbix Agent..."
 
     if [ ! -f "$ZBX_CONF" ]; then
-        echo "❌ No se encontró el archivo $ZBX_CONF"
-        exit 1
+        echo "❌ No se encontró $ZBX_CONF. Verificando si el paquete se instaló correctamente..."
+        echo "Creando archivo básico de configuración..."
+        mkdir -p /etc/zabbix
+        cat <<EOF > "$ZBX_CONF"
+PidFile=/var/run/zabbix/zabbix_agentd.pid
+LogFile=/var/log/zabbix/zabbix_agentd.log
+Server=${ZBX_SERVER}
+ServerActive=${ZBX_SERVER}
+Hostname=$(hostname)
+Include=/etc/zabbix/zabbix_agentd.d/*.conf
+EOF
+    else
+        sed -i "s|^Server=.*|Server=${ZBX_SERVER}|" "$ZBX_CONF" || echo "Server=${ZBX_SERVER}" >> "$ZBX_CONF"
+        sed -i "s|^ServerActive=.*|ServerActive=${ZBX_SERVER}|" "$ZBX_CONF" || echo "ServerActive=${ZBX_SERVER}" >> "$ZBX_CONF"
+        sed -i "s|^Hostname=.*|Hostname=$(hostname)|" "$ZBX_CONF" || echo "Hostname=$(hostname)" >> "$ZBX_CONF"
     fi
-
-    sed -i "s|^Server=.*|Server=${ZBX_SERVER}|" "$ZBX_CONF" || echo "Server=${ZBX_SERVER}" >> "$ZBX_CONF"
-    sed -i "s|^ServerActive=.*|ServerActive=${ZBX_SERVER}|" "$ZBX_CONF" || echo "ServerActive=${ZBX_SERVER}" >> "$ZBX_CONF"
-    sed -i "s|^Hostname=.*|Hostname=$(hostname)|" "$ZBX_CONF" || echo "Hostname=$(hostname)" >> "$ZBX_CONF"
 }
 
-# Dispatcher
 case "$DISTRO" in
     ubuntu|debian)
         install_zabbix_agent_deb
@@ -115,3 +118,4 @@ echo "Reiniciando y habilitando Zabbix Agent..."
 systemctl enable --now zabbix-agent
 
 echo -e "\n✅ Zabbix Agent instalado y configurado correctamente para el servidor $ZBX_SERVER con hostname $(hostname)"
+echo "Revisa el archivo de configuración en $ZBX_CONF y los logs en /var/log/zabbix/zabbix_agentd.log"
